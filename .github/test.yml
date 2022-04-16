@@ -1,0 +1,110 @@
+name: build-app
+on:
+  push:
+    branches: [dev]
+
+jobs:
+
+  file_gen:
+    runs-on: ubuntu-latest
+    steps:
+      - id: "step1"
+        name: "Generate a file"
+        run: |
+          echo "HELLO" > ./hello.txt
+      - uses: actions/upload-artifact@master
+        with:
+          name: hello.txt
+          path: .
+
+  file_gen2:
+    runs-on: ubuntu-latest
+    steps:
+      - id: "step1"
+        name: "Generate a file"
+        run: |
+          echo "HELLO2" > ./hello2.txt
+      - uses: actions/upload-artifact@master
+        with:
+          name: hello2.txt
+          path: .
+
+  file_read:
+    needs:
+      - file_gen
+      - file_gen2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@master
+        with:
+          name: hello.txt
+          path: .
+      - uses: actions/download-artifact@master
+        with:
+          name: hello2.txt
+          path: .
+
+      - id: list_files
+        env:
+          file: ${{ needs.file_gen.outputs.path }}
+          contents: ${{ needs.file_gen.outputs.contents }}
+        run: |
+          ls -l .
+          cat ./hello.txt
+          cat ./hello2.txt
+      
+      - name: Get Version
+        id: get_version
+        run: |
+          VERSION=$(date +"%Y%M%d%H%M%s")
+          echo "::set-output name=versionNum::${VERSION}"
+
+      - name: Display Version
+        id: display_version
+        env:
+          VERSION: ${{ steps.get_version.outputs.versionNum }}
+        run: |
+           echo ${VERSION}
+
+      - name: Tag version
+        id: tag_version
+        if: github.ref == 'refs/heads/master'
+        uses: mathieudutour/github-tag-action@v5.5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          custom_tag: ${{ steps.get_version.outputs.versionNum }}
+
+      - name: Create a GitHub release
+        if: github.ref == 'refs/heads/master'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag_version.outputs.new_tag }}
+          release_name: Release APK ${{ steps.tag_version.outputs.new_tag }}
+          body: ${{ steps.tag_version.outputs.changelog }}
+
+      - name: Upload Release Asset
+        id: upload-release-asset1
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: 'hello.txt'
+          asset_name: hello.txt
+          asset_content_type: text/plain
+
+      - name: Upload Release Asset2
+        id: upload-release-asset2
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: 'hello2.txt'
+          asset_name: hello2.txt
+          asset_content_type: text/plain
